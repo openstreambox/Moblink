@@ -263,8 +263,6 @@ class MainActivity : ComponentActivity() {
         automaticStatus.value =
             if (!automaticStarted) {
                 "Not started"
-            } else if (streamerNetworks.isEmpty()) {
-                "Waiting for WiFi or Ethernet"
             } else if (cellularNetwork == null) {
                 "Waiting for cellular"
             } else if (totalCount > 0) {

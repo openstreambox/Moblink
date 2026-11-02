@@ -108,8 +108,8 @@ class Relay {
     fun setStreamerNetworks(networks: List<Network>) {
         handler?.post {
             streamerNetworks = networks
-            if (started && streamerNetwork !in networks) {
-                reconnectSoon("Streamer network changed")
+            if (started && streamerNetwork != null && streamerNetwork !in networks) {
+                reconnectSoon("Streamer network lost")
             }
             updateStatusInternal()
         }
@@ -159,14 +159,19 @@ class Relay {
                 return
             }
         streamerNetwork = pickStreamerNetwork(request.url.host)
-        val network = streamerNetwork ?: return
+        logger.log("$streamerUrl: Streamer network: ${streamerNetwork ?: "default routing"}")
+        // Bind to a WiFi or Ethernet network only when one of its routes covers the
+        // streamer's address. Otherwise, for example when this device is the hotspot
+        // the streamer is connected to, let Android route the connection normally.
         val client =
-            okHttpClient
-                .newBuilder()
-                .socketFactory(network.socketFactory)
-                .dns { network.getAllByName(it).toList() }
-                .proxy(Proxy.NO_PROXY)
-                .build()
+            streamerNetwork?.let { network ->
+                okHttpClient
+                    .newBuilder()
+                    .socketFactory(network.socketFactory)
+                    .dns { network.getAllByName(it).toList() }
+                    .proxy(Proxy.NO_PROXY)
+                    .build()
+            } ?: okHttpClient
         webSocket =
             client.newWebSocket(
                 request,
@@ -225,8 +230,6 @@ class Relay {
                 "Streamer URL empty"
             } else if (password.isEmpty()) {
                 "Password empty"
-            } else if (streamerNetworks.isEmpty()) {
-                "Waiting for WiFi or Ethernet"
             } else if (destinationNetwork == null) {
                 "Waiting for cellular"
             } else if (connected) {
@@ -270,7 +273,7 @@ class Relay {
             } catch (_: Exception) {
                 false
             }
-        } ?: streamerNetworks.firstOrNull()
+        }
     }
 
     private fun handleMessage(text: String) {
@@ -319,8 +322,8 @@ class Relay {
         streamerSocket = null
         destinationSocket?.close()
         destinationSocket = null
-        if (streamerNetwork == null || destinationNetwork == null) {
-            reconnectSoon("Start tunnel without streamer or destination network")
+        if (destinationNetwork == null) {
+            reconnectSoon("Start tunnel without destination network")
             return
         }
         streamerSocket = DatagramSocket()
